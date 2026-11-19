@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focos de queimadas · Paraíba 2026</title>
+<meta name="description" content="Painel interativo dos focos de queimadas da Paraíba em 2026.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div id="app" v-cloak class="mx-auto max-w-7xl p-3 sm:p-5">
+
+  <header class="mb-4">
+    <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Focos de queimadas · Paraíba 2026</h1>
+    <p class="text-sm text-slate-600">Fonte: {{ meta.fonte }} · Satélite: {{ meta.satelite }} · Datas e horas no fuso de Fortaleza (UTC-3)</p>
+  </header>
+
+  <!-- carregamento por arquivo -->
+  <section v-if="!todosOk" aria-label="Carregamento dos arquivos" class="mb-4 rounded-xl border border-slate-200 bg-white p-3" aria-live="polite">
+    <ul class="space-y-2 text-sm">
+      <li v-for="f in files" :key="f.k" class="flex flex-wrap items-center gap-2">
+        <span v-if="f.estado==='carregando'" class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-orange-600" aria-hidden="true"></span>
+        <span v-else-if="f.estado==='ok'" class="text-green-600" aria-hidden="true">✔</span>
+        <span v-else class="text-red-600" aria-hidden="true">✖</span>
+        <strong>{{ f.rot }}</strong> <code class="text-xs text-slate-500">{{ f.path }}</code>
+        <span v-if="f.estado==='carregando'">carregando…</span>
+        <span v-else-if="f.estado==='ok'" class="text-green-700">pronto</span>
+        <span v-else class="text-red-700" role="alert">falhou: {{ f.erro }}</span>
+      </li>
+    </ul>
+    <button v-if="temErro" @click="tentarNovamente" class="mt-3 rounded-lg bg-orange-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-800">Tentar novamente</button>
+  </section>
+
+  <template v-if="pronto">
+  <!-- filtros -->
+  <section aria-label="Filtros" class="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="w-full sm:w-80"><label for="selMun" class="mb-1 block text-sm font-semibold">Município</label><select id="selMun" ref="selMun"></select></div>
+      <div class="w-full sm:w-56"><label for="selBioma" class="mb-1 block text-sm font-semibold">Bioma</label>
+        <select id="selBioma" v-model="filtro.bioma" class="h-[2.4rem] w-full rounded-md border border-slate-300 bg-white px-2 text-sm"><option value="">Todos os biomas</option><option v-for="b in biomas" :key="b" :value="b">{{ b }}</option></select></div>
+      <ul class="flex flex-wrap items-center gap-2" aria-label="Filtros ativos">
+        <li v-if="filtro.mun"><button @click="filtro.mun=''" :aria-label="'Remover filtro de município '+nomeMunSel" class="rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-900 hover:bg-orange-200">Município: {{ nomeMunSel }} ✕</button></li>
+        <li v-if="filtro.bioma"><button @click="filtro.bioma=''" :aria-label="'Remover filtro de bioma '+filtro.bioma" class="rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-900 hover:bg-orange-200">Bioma: {{ filtro.bioma }} ✕</button></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- indicadores -->
+  <section aria-label="Indicadores" class="mb-4 flex snap-x gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-5 md:overflow-visible">
+    <article v-for="k in cartoes" :key="k.t" class="min-w-[200px] shrink-0 snap-start rounded-xl border border-slate-200 bg-white p-3 md:min-w-0">
+      <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ k.t }}</h2>
+      <p class="text-2xl font-extrabold text-orange-700">{{ k.v }}</p>
+      <p class="text-xs text-slate-600">{{ k.n }}</p>
+    </article>
+  </section>
+
+  <!-- mapa -->
+  <section aria-labelledby="tMapa" class="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 id="tMapa" class="text-lg font-bold">Mapa dos focos</h2>
+        <span class="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-white">{{ rotuloPeriodo }}</span>
+      </div>
+      <div class="seg" role="group" aria-label="Visualização do mapa">
+        <button v-for="o in VIEWS" :key="o.k" :aria-pressed="view===o.k" @click="view=o.k">{{ o.t }}</button>
+      </div>
+    </div>
+    <div ref="wrap" class="relative overflow-hidden rounded-lg bg-white">
+      <div id="map" ref="mapEl" role="application" aria-label="Mapa interativo dos focos de queimadas"></div>
+      <p v-if="baseAviso" class="absolute inset-x-2 top-2 z-[1000] rounded-md bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 shadow" role="alert">O mapa base não carregou (verifique a conexão). Os focos e os limites continuam disponíveis.</p>
+    </div>
+    <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Legenda" role="group">
+      <strong>Legenda:</strong>
+      <template v-if="view==='cluster'"><span v-for="f in FAIXAS" :key="f[2]"><i class="sw" :style="{background:f[1]}"></i>{{ f[2] }} focos</span></template>
+      <template v-else-if="view==='heat'"><span>Baixa</span><i class="inline-block h-3 w-40 rounded" style="background:linear-gradient(90deg,#fde68a,#f97316,#dc2626,#7f1d1d)"></i><span>Alta densidade</span></template>
+      <template v-else-if="view==='intens'"><span v-for="c in CLS_FRP" :key="c.t"><i class="sw" :style="{background:c.c}"></i>{{ c.t }}</span><span class="text-slate-500">(tamanho e cor pela FRP, em MW)</span></template>
+      <template v-else><span v-for="c in legMun" :key="c.t"><i class="sw" :style="{background:c.c}"></i>{{ c.t }}</span></template>
+    </div>
+    <!-- faixa do tempo -->
+    <div class="mt-3 rounded-lg bg-slate-50 p-3" role="group" aria-label="Controle de tempo">
+      <div class="flex items-center gap-2">
+        <button @click="passo(-1)" :disabled="idx<=0" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold disabled:opacity-40" aria-label="Passo anterior">◀</button>
+        <input type="range" class="min-w-0 flex-1 accent-orange-700" min="0" :max="Math.max(steps.length-1,0)" :value="idx" @input="irPara(steps[+$event.target.value])" aria-label="Posição no tempo" :aria-valuetext="rotuloPasso(idx)">
+        <button @click="passo(1)" :disabled="idx>=steps.length-1" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold disabled:opacity-40" aria-label="Próximo passo">▶</button>
+      </div>
+      <p class="mt-1 text-sm font-semibold" aria-live="polite">{{ rotuloPasso(idx) }} <span class="font-normal text-slate-500">· passo {{ idx+1 }} de {{ steps.length }}</span></p>
+      <div class="mt-2 flex flex-wrap gap-3">
+        <div class="seg" role="group" aria-label="Tamanho do passo"><button v-for="u in UNITS" :key="u.k" :aria-pressed="unit===u.k" @click="unit=u.k">{{ u.t }}</button></div>
+        <div class="seg" role="group" aria-label="Modo de exibição"><button :aria-pressed="modo==='passo'" @click="modo='passo'">Só o passo atual</button><button :aria-pressed="modo==='cum'" @click="modo='cum'">Acumulado</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- gráficos -->
+  <section aria-label="Gráficos" class="mb-4 grid gap-4 lg:grid-cols-2">
+    <article class="rounded-xl border border-slate-200 bg-white p-3"><h2 class="font-bold">Focos por {{ unitSing }}</h2><p class="text-xs text-slate-500">Janela atual destacada · clique para ir ao período</p><div ref="cPasso" role="img" :aria-label="'Gráfico de colunas: focos por '+unitSing"></div></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-3"><h2 class="font-bold">Top 15 municípios</h2><p class="text-xs text-slate-500">Na janela atual · clique para filtrar</p><p v-if="!W.length" class="text-sm text-slate-500">Sem focos na seleção.</p><div ref="cMun" role="img" aria-label="Gráfico de barras: municípios com mais focos"></div></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-3"><h2 class="font-bold">Focos por bioma</h2><p class="text-xs text-slate-500">Na janela atual · clique para filtrar</p><p v-if="!W.length" class="text-sm text-slate-500">Sem focos na seleção.</p><div ref="cBioma" role="img" aria-label="Gráfico de colunas: focos por bioma"></div></article>
+    <article class="rounded-xl border border-slate-200 bg-white p-3"><h2 class="font-bold">Hora da detecção (UTC-3)</h2><p class="text-xs text-slate-500">Na janela atual</p><p v-if="!W.length" class="text-sm text-slate-500">Sem focos na seleção.</p><div ref="cHora" role="img" aria-label="Gráfico de colunas: focos por hora do dia"></div></article>
+  </section>
+
+  <!-- tabela -->
+  <section aria-labelledby="tTab" class="rounded-xl border border-slate-200 bg-white p-3">
+    <h2 id="tTab" class="font-bold">10 maiores FRP na janela atual</h2>
+    <p v-if="!top10.length" class="py-3 text-sm text-slate-500">Sem focos na seleção.</p>
+    <div v-else class="overflow-x-auto"><table class="w-full text-left text-sm">
+      <caption class="sr-only">Os dez focos com maior potência radiativa (FRP) na janela atual</caption>
+      <thead><tr class="border-b border-slate-200 text-xs uppercase text-slate-500"><th scope="col" class="py-2 pr-3">#</th><th scope="col" class="pr-3">Município</th><th scope="col" class="pr-3">Data e hora</th><th scope="col" class="pr-3">FRP (MW)</th><th scope="col" class="pr-3">Bioma</th><th scope="col"><span class="sr-only">Ação</span></th></tr></thead>
+      <tbody><tr v-for="(f,k) in top10" :key="f.i" class="cursor-pointer border-b border-slate-100 hover:bg-orange-50" @click="abrirFoco(f)">
+        <td class="py-2 pr-3">{{ k+1 }}</td><th scope="row" class="pr-3 font-medium">{{ nomeMun(f) }}</th><td class="pr-3 whitespace-nowrap">{{ fHora.format(f.t) }}</td><td class="pr-3 font-bold text-orange-700">{{ nf(f.frp,1) }}</td><td class="pr-3">{{ f.bioma||'—' }}</td>
+        <td><button @click.stop="abrirFoco(f)" class="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-white" :aria-label="'Ver no mapa o foco de '+nomeMun(f)">Ver no mapa</button></td></tr></tbody>
+    </table></div>
+  </section>
+  </template>
+
+  <footer class="mt-4 text-xs text-slate-500">Mapa base © colaboradores do OpenStreetMap. FRP: potência radiativa do fogo, em megawatts.</footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/iso8601-js-period@0.2.1/iso8601.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-timedimension@1.1.1/dist/leaflet.timedimension.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
+<script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+<script src="https://code.highcharts.com/12/highcharts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

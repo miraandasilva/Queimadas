@@ -1,0 +1,23 @@
+/* Focos de queimadas · Paraíba 2026 — estilos complementares ao Tailwind */
+[v-cloak]{display:none}
+.seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:.5rem;overflow:hidden;background:#fff}
+.seg button{padding:.4rem .8rem;font-size:.875rem;font-weight:500;color:#334155;border-right:1px solid #e2e8f0}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:#f1f5f9}
+.seg button[aria-pressed=true]{background:#c2410c;color:#fff}
+:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+#map{height:min(68vh,640px);min-height:380px;background:#e2e8f0}
+@media (max-width:640px){#map{height:52vh;min-height:320px}}
+.cl{display:grid;place-items:center;border-radius:50%;color:#fff;font:700 13px system-ui;border:3px solid rgba(255,255,255,.75)}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.25);vertical-align:-2px;margin-right:.35rem}
+.popup-card .leaflet-popup-content-wrapper{border-radius:12px;padding:0}
+.popup-card .leaflet-popup-content{margin:0;min-width:210px}
+.pc{padding:.8rem 1rem;font:14px/1.35 system-ui}
+.pc-frp{display:flex;align-items:baseline;gap:.4rem;color:#9a3412}
+.pc-frp b{font-size:2rem;line-height:1}
+.pc-frp span{font-size:.75rem;font-weight:600}
+.pc-t{font-weight:700;margin-top:.3rem}.pc-s{color:#64748b;font-size:.8rem;margin-bottom:.4rem}
+.pc dl{display:grid;grid-template-columns:auto 1fr;gap:.1rem .6rem;margin:0;font-size:.8rem}
+.pc dt{color:#64748b}.pc dd{margin:0;text-align:right;font-weight:600}
+.leaflet-control-zoom-home{font:700 17px/26px system-ui!important}
+.ts-control{min-height:2.4rem}
